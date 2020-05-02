@@ -1,4 +1,4 @@
-use securethebox_server_rs::controllers::travis;
+// use securethebox_client_rs::controllers::travis;
 
 // NOTE
 // ALL tests run in PARALLEL (built-in Rust)
