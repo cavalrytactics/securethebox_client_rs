@@ -15,10 +15,13 @@ before_deploy:
 - wasm-bindgen --target no-modules --no-typescript --out-dir static/ --out-name worker
   target/wasm32-unknown-unknown/debug/securethebox_client_rs_worker.wasm
 - cargo web deploy
+- nvm install 9
+- npm i -g firebase-tools
 deploy:
   provider: firebase
   project: stb-rs-prod
   message: travis deployment to firebase hosting
+  skip_cleanup: true
   token:
     secure: lUHaaEaOat57UJz3lteD/2rePsEBwV3ENW3n/3Zu6zOWe1GJGXwfKsmvGHSesIuf5uJ9okQ10pz5xmvUiL3Xyssi6ATio0SHevSeJa1ThQD5CkIX3R//iZ6U2H8EW6DgQV9+Rzz1piXwuxXKkxdM00KaiEuL93NTgcKelyFkwb21tr+aqtNDRsn/IRJ4dlCh5lrm7/c0Y3nhRtkPsS2zPh2KNpGUJB4ijr/C8B/nmxPUi8ZembHxj2I5fKuO8P26LgwLPuinPJANNuMB6Swyl0xBhzNE3lDBQHFOYXiWOilJq8MiPHUxsXv5EU1+53iA/hZPjBWb8UtCKC6g7MbjOFQEH5HD3y+LvnAyCzbl0lCCZIVxVE14frtqT4Ox9oSX6mZE4kawt0mjA2pW8bxU8lHZauspgdEvvLpRa8zGg+nKODs0M0jXx9DiVqGjHfbL0pu8X+OA8dDA3+TE0X1PX5SgHmWJy5RLvOxykiZgJzkUrmLI6RtyWJVYyUcudrmTpFLFNOdYerzKmm8PUDxLhpk3tUeUNpcwh/Zs7/iyXofaQVDM6gOOdq+KJnd7uvIqLJssgwcrLrkX5ZP6TZIFIqwLKFGNi30uJdfcJ/WmmLVJB2ACGEcLsQkjblxhSXQVT29aU/YkqFAZDZZ/8p39zX1Jc4+8kkzXhF7ywL1cAJM=
 env:
