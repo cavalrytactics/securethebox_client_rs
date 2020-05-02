@@ -15,7 +15,7 @@ before_deploy:
 - wasm-bindgen --target no-modules --no-typescript --out-dir static/ --out-name worker
   target/wasm32-unknown-unknown/debug/securethebox_client_rs_worker.wasm
 - cargo web deploy
-- nvm install 9
+- nvm install 12
 - npm i -g firebase-tools
 deploy:
   provider: firebase
