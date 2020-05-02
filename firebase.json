@@ -1,0 +1,15 @@
+{
+  "hosting": {
+    "site": "stb-rs-prod",
+    "public": "target/deploy",
+    "ignore": [
+      "firebase.json"
+    ],
+    "rewrites": [
+      {
+        "source": "!/api/**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

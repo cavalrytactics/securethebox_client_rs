@@ -1,0 +1,31 @@
+---
+dist: bionic
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+deploy:
+  provider: firebase
+  project: stb-rs-prod
+  message: travis deployment to firebase hosting
+  skip_cleanup: true
+  token:
+    secure: UlIqY6YgwgI+GM73FSue6dYXpmzHObHbwhjLi5T4Yu/rmjR4U0w8BFH1i738OrPBVhA4bN0sTTBd8ymoE9KKvQe73M+6B7/caPAS1uG2qJdDuhEUaO6XJ9uZN7DiT6xVnLsgsiVy0D5/l9AjLHZXhcwYns40h8kbUPaJrw6J7oyn2Y0/q3jb5LTEkJfgQvZeDjjsVWkFCvcN2ig2qq9lOv/TQAqwUKKOwwqEUDHBUodZKsgDLxLoxqOomg5ZCeTFaB4I6CYF4T/AUfPUAJTJV2WjOemEYN86MTQ/UawQz+s7VRQv/WpxdI8t/JnN0RHhFn7YPXaUwrVfCMEXOK9B9Zy2y06YmDY9JWW8lVgfctADQlRM8ELWamvjgwe98iV8/mEoXF4pVrs3TPVCFEAVHTTf7jLYRraitWkGgWPjrnTccyjpbJFLZQT9osl9mUYAl+Cu87uR8SFZAiV8gwO6+2qCoCnwvxHY3pvvBVyoWE4EUSFxI4WoUK+8x4flZ8nVEC9KY2Qbz3YpMG0WgPFzr3pvaOwQO1tZldItBY4z3+0ccGn0AsX1dezEAQhDLGEjolsSVqu/bI/LzPoRButJzTIYF9XqQIj0DFaMy1z9LqB3FczIA0rgbjd0cI6rQsizwKmewiu8xkHBHqa8D0i++bkKic9GHRFzJagU5sezI8c=
+env:
+  global:
+    secure: UlIqY6YgwgI+GM73FSue6dYXpmzHObHbwhjLi5T4Yu/rmjR4U0w8BFH1i738OrPBVhA4bN0sTTBd8ymoE9KKvQe73M+6B7/caPAS1uG2qJdDuhEUaO6XJ9uZN7DiT6xVnLsgsiVy0D5/l9AjLHZXhcwYns40h8kbUPaJrw6J7oyn2Y0/q3jb5LTEkJfgQvZeDjjsVWkFCvcN2ig2qq9lOv/TQAqwUKKOwwqEUDHBUodZKsgDLxLoxqOomg5ZCeTFaB4I6CYF4T/AUfPUAJTJV2WjOemEYN86MTQ/UawQz+s7VRQv/WpxdI8t/JnN0RHhFn7YPXaUwrVfCMEXOK9B9Zy2y06YmDY9JWW8lVgfctADQlRM8ELWamvjgwe98iV8/mEoXF4pVrs3TPVCFEAVHTTf7jLYRraitWkGgWPjrnTccyjpbJFLZQT9osl9mUYAl+Cu87uR8SFZAiV8gwO6+2qCoCnwvxHY3pvvBVyoWE4EUSFxI4WoUK+8x4flZ8nVEC9KY2Qbz3YpMG0WgPFzr3pvaOwQO1tZldItBY4z3+0ccGn0AsX1dezEAQhDLGEjolsSVqu/bI/LzPoRButJzTIYF9XqQIj0DFaMy1z9LqB3FczIA0rgbjd0cI6rQsizwKmewiu8xkHBHqa8D0i++bkKic9GHRFzJagU5sezI8c=
+before_install:
+  - sudo apt-get update -y
+  - cargo install wasm-bindgen-cli
+cache: cargo
+install:
+  - pwd
+  - ls
+script:
+  - pwd
+  - cargo build --target wasm32-unknown-unknown --bin securethebox_client_rs_app
+  - wasm-bindgen --target web --no-typescript --out-dir static/ --out-name app target/wasm32-unknown-unknown/debug/securethebox_client_rs_app.wasm
+  - cargo build --target wasm32-unknown-unknown --bin securethebox_client_rs_worker
+  - wasm-bindgen --target no-modules --no-typescript --out-dir static/ --out-name worker target/wasm32-unknown-unknown/debug/securethebox_client_rs_worker.wasm
+  - cargo web deploy 
