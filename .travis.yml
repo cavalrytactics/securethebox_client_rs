@@ -23,7 +23,7 @@ install:
   - pwd
   - ls
   - rustup target add wasm32-unknown-unknown
-  - cargo +stable install wasm-bindgen-cli
+  - cargo install cargo-web
 script:
   - pwd
   - cargo build --target wasm32-unknown-unknown --bin securethebox_client_rs_app
