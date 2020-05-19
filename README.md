@@ -2,30 +2,26 @@
 
 - Install requirements
 ```
+cargo install cargo-web
+cargo install cargo-make
 cargo install wasm-bindgen-cli
+cargo install graphql_client_cli
+cargo install microserver
 ```
 
-- build main
+- start web server (locally)
 ```
-cargo build --target wasm32-unknown-unknown --bin securethebox_client_rs_app
-wasm-bindgen --target web --no-typescript --out-dir static/ --out-name app target/wasm32-unknown-unknown/debug/securethebox_client_rs_app.wasm
-```
-
-- build web worker
-```
-cargo build --target wasm32-unknown-unknown --bin securethebox_client_rs_worker
-wasm-bindgen --target no-modules --no-typescript --out-dir static/ --out-name worker target/wasm32-unknown-unknown/debug/securethebox_client_rs_worker.wasm
-```
-
-- start web server
-```
-cargo web start
+cargo make start
+OR
+pier wasms
 ```
 
 ## build for prod
-- build files target/deploy path
+- build files /pkg path
 ```
-cargo web deploy
+cargo make build_client_release
+OR
+pier wasmr
 ```
 
 ## firebase hosting deploy

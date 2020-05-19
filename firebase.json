@@ -1,7 +1,7 @@
 {
   "hosting": {
     "site": "stb-rs-prod",
-    "public": "target/deploy",
+    "public": "pkg",
     "ignore": [
       "firebase.json"
     ],

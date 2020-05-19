@@ -1,0 +1,49 @@
+# ---- BUILD----
+
+[tasks.build]
+description = "Build client"
+clear = true
+dependencies = ["build_client"]
+
+[tasks.build_release]
+extend = "build"
+description = "Build client in release mode"
+dependencies = ["build_client_release"]
+
+[tasks.build_client]
+description = "Build client"
+install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V" }
+command = "wasm-pack"
+args = [
+    "build",
+    "--target", "web",
+    "--out-name", "package",
+    "--dev"
+]
+
+[tasks.build_client_release]
+extend = "build_client"
+description = "Build client in release mode"
+args = [
+    "build",
+    "--target", "web",
+    "--out-name", "package",
+    "--release"
+]
+
+# ---- START ----
+
+[tasks.start]
+dependencies = ["build_client"]
+command = "microserver"
+args = ["--port", "7000"]
+
+[tasks.start_release]
+alias = "default_start_release"
+dependencies = ["build_client_release"]
+
+# ---- LINT ----
+
+[tasks.clippy]
+alias = "default_clippy"
+
