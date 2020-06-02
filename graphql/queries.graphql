@@ -1,0 +1,23 @@
+query QBooks {
+    books {
+        id
+        name
+        author
+    }
+}
+
+# query QBook($id: String!) {
+#     book(id: $id) {
+#         id
+#         name
+#         author
+#     }
+# }
+
+mutation MCreateBook($name: String!, $author: String!) {
+    createBook(name: $name, author: $author)
+}
+
+mutation MDeleteBook($id: String!) {
+    deleteBook(id: $id)
+}

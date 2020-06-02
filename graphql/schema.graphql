@@ -1,0 +1,51 @@
+directive @cacheControl(
+  maxAge: Int
+  scope: CacheControlScope
+) on FIELD_DEFINITION | OBJECT | INTERFACE
+enum CacheControlScope {
+  PUBLIC
+  PRIVATE
+}
+
+type Book {
+  id: ID!
+  name: String!
+  author: String!
+}
+
+type Query {
+  books: [Book!]!
+  # book(id: ID!): Book
+}
+
+type BookChanged {
+  mutationType: MutationType!
+  id: ID!
+}
+
+enum MutationType {
+  CREATED
+  DELETED
+}
+
+type QueryRoot {
+  books: [Book!]!
+  # book(id: ID!): Book!
+}
+
+type MutationRoot {
+  createBook(name: String!, author: String!): Boolean!
+  deleteBook(id: ID!): Boolean!
+}
+
+type SubscriptionRoot {
+  interval(n: Int! = 1): Int!
+  books(mutationType: MutationType): BookChanged!
+}
+
+schema {
+  query: QueryRoot
+  mutation: MutationRoot
+  subscription: SubscriptionRoot
+}
+

@@ -28,7 +28,18 @@ args = [
     "build",
     "--target", "web",
     "--out-name", "package",
-    "--release"
+    "--release", "--", "--features", ""
+]
+
+[tasks.build_client_debug]
+description = "Build client debug"
+install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V" }
+command = "wasm-pack"
+args = [
+    "build",
+    "--target", "web",
+    "--out-name", "package",
+    "--dev", "--", "--features", "console_error_panic_hook"
 ]
 
 # ---- START ----
@@ -39,8 +50,14 @@ command = "microserver"
 args = ["--port", "7000"]
 
 [tasks.start_release]
-alias = "default_start_release"
 dependencies = ["build_client_release"]
+command = "microserver"
+args = ["--port", "7000"]
+
+[tasks.start_debug]
+dependencies = ["build_client_debug"]
+command = "microserver"
+args = ["--port", "7000"]
 
 # ---- LINT ----
 

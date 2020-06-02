@@ -8,13 +8,9 @@ before_deploy:
 - pwd
 - rustup target add wasm32-unknown-unknown
 - cargo install wasm-bindgen-cli
-- cargo install cargo-web
-- cargo build --target wasm32-unknown-unknown --bin securethebox_client_rs_app
-- wasm-bindgen --target web --no-typescript --out-dir static/ --out-name app target/wasm32-unknown-unknown/debug/securethebox_client_rs_app.wasm
-- cargo build --target wasm32-unknown-unknown --bin securethebox_client_rs_worker
-- wasm-bindgen --target no-modules --no-typescript --out-dir static/ --out-name worker
-  target/wasm32-unknown-unknown/debug/securethebox_client_rs_worker.wasm
-- cargo web deploy
+- cargo install cargo-make
+- cargo make build_client
+- cargo make build_client_release
 - nvm install 12
 - npm i -g firebase-tools
 deploy:

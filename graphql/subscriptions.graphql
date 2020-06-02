@@ -1,0 +1,10 @@
+subscription SBookChanged($mutationType: MutationType!){
+    books(mutationType: $mutationType){
+        id
+        mutationType
+    }
+}
+
+subscription SInterval($n: Int!){
+    interval(n: $n)
+}
