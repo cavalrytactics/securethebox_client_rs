@@ -5,6 +5,8 @@ use seed::{prelude::*, *};
 use serde::{Deserialize, Serialize};
 
 mod shared;
+type Name = String;
+type Author = String;
 
 const API_URL: &str = "http://c2.local:8000";
 const WS_URL: &str = "ws://c2.local:8000";
@@ -100,6 +102,7 @@ struct Model {
 enum Msg {
     BooksFetched(fetch::Result<GQLResponse<q_books::ResponseData>>),
     BookCreated(fetch::Result<GQLResponse<q_books::ResponseData>>),
+    BookCreatedClick(Name, Author),
     WebSocketOpened,
     MessageReceived(WebSocketMessage),
     CloseWebSocket,
@@ -122,6 +125,18 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         })) => {
             println!("Created Book");
             // model.books = Some(data.books);
+        }
+        Msg::BookCreatedClick(name, author) => {
+            orders.perform_cmd(async {
+                // Msg::BooksFetched(send_graphql_request(&QBooks::build_query(q_books::Variables)).await)
+                Msg::BookCreated(
+                    send_graphql_request(&MCreateBook::build_query(m_create_book::Variables {
+                        name: "AAA".to_string(),
+                        author: "BBB".to_string(),
+                    }))
+                    .await,
+                )
+            });
         }
         Msg::BookCreated(error) => log!(error),
         Msg::BooksFetched(error) => log!(error),
@@ -234,7 +249,14 @@ fn view(model: &Model) -> Vec<Node<Msg>> {
                     input_ev(Ev::Input, Msg::InputTextChanged),
                     C!["input"],
                 ],
-                button!["Create", C!["button"]]
+                button![
+                    "Create",
+                    ev(Ev::Click, move |_| Msg::BookCreatedClick(
+                        "AAA".to_string(),
+                        "BBB".to_string()
+                    )),
+                    C!["button"]
+                ]
             ],
             C!["container"]
         ],
