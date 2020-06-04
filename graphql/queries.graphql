@@ -15,11 +15,7 @@ query QBooks {
 # }
 
 mutation MCreateBook($name: String!, $author: String!) {
-    createBook(name: $name, author: $author) {
-      id
-      name
-      author
-    }
+    createBook(name: $name, author: $author)
 }
 
 mutation MDeleteBook($id: String!) {

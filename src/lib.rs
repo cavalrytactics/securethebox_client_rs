@@ -66,8 +66,12 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
         sent_messages_count: 0,
         messages: Vec::new(),
         input_text: String::new(),
+        input_text_name: String::new(),
+        input_text_author: String::new(),
         web_socket: create_websocket(orders),
         web_socket_reconnector: None,
+        selected_name: std::default::Default::default(),
+        selected_author: std::default::Default::default(),
     }
 }
 
@@ -90,6 +94,10 @@ struct Model {
     sent_messages_count: usize,
     messages: Vec<String>,
     input_text: String,
+    input_text_name: String,
+    input_text_author: String,
+    selected_name: Option<Name>,
+    selected_author: Option<Author>,
     web_socket: WebSocket,
     web_socket_reconnector: Option<StreamHandle>,
     books: Option<Vec<q_books::QBooksBooks>>,
@@ -110,6 +118,8 @@ enum Msg {
     WebSocketFailed,
     ReconnectWebSocket(usize),
     InputTextChanged(String),
+    InputTextNameChanged(String),
+    InputTextAuthorChanged(String),
     SendMessage(shared::ClientMessageGQLPay),
 }
 
@@ -127,12 +137,13 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             // model.books = Some(data.books);
         }
         Msg::BookCreatedClick(name, author) => {
+            model.selected_name = Some(name.clone());
+            model.selected_author = Some(author.clone());
             orders.perform_cmd(async {
-                // Msg::BooksFetched(send_graphql_request(&QBooks::build_query(q_books::Variables)).await)
                 Msg::BookCreated(
                     send_graphql_request(&MCreateBook::build_query(m_create_book::Variables {
-                        name: "AAA".to_string(),
-                        author: "BBB".to_string(),
+                        name,
+                        author,
                     }))
                     .await,
                 )
@@ -212,6 +223,12 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::InputTextChanged(input_text) => {
             model.input_text = input_text;
         }
+        Msg::InputTextNameChanged(input_text) => {
+            model.input_text_name = input_text;
+        }
+        Msg::InputTextAuthorChanged(input_text) => {
+            model.input_text_author = input_text;
+        }
         Msg::SendMessage(msg) => {
             model.web_socket.send_json(&msg).unwrap();
             model.input_text.clear();
@@ -235,26 +252,37 @@ fn view(model: &Model) -> Vec<Node<Msg>> {
             model.messages.iter().map(|message| p![message]),
             C!["container"],
         ],
+        //
         // Create Book
         //
         div![
             h3!["Create Book", C!["description"]],
             div![
                 input![
-                    id!("text"),
+                    id!("text1"),
                     attrs! {
                         At::Type => "text",
-                        At::Value => model.input_text;
+                        At::Value => model.input_text_name;
                     },
-                    input_ev(Ev::Input, Msg::InputTextChanged),
+                    input_ev(Ev::Input, Msg::InputTextNameChanged),
+                    C!["input"],
+                ],
+                input![
+                    id!("text2"),
+                    attrs! {
+                        At::Type => "text",
+                        At::Value => model.input_text_author;
+                    },
+                    input_ev(Ev::Input, Msg::InputTextAuthorChanged),
                     C!["input"],
                 ],
                 button![
                     "Create",
-                    ev(Ev::Click, move |_| Msg::BookCreatedClick(
-                        "AAA".to_string(),
-                        "BBB".to_string()
-                    )),
+                    ev(Ev::Click, {
+                        let name = model.input_text_name.to_owned();
+                        let author = model.input_text_author.to_owned();
+                        move |_| Msg::BookCreatedClick(name.to_string(), author.to_string())
+                    }),
                     C!["button"]
                 ]
             ],
