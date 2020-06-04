@@ -62,13 +62,10 @@ checksum = "08c48aae112d48ed9f069b33538ea9e3e90aa263cfa3d1c24309612b1f7472de"
 name = "c"
 version = "0.1.0"
 dependencies = [
- "enclose",
  "graphql_client",
- "indexmap",
  "seed",
  "serde",
  "serde_json",
- "uuid",
 ]
 
 [[package]]
@@ -400,7 +397,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "076f042c5b7b98f31d205f1249267e12a6518c1481e9dae9764af19b707d2292"
 dependencies = [
  "autocfg",
- "serde",
 ]
 
 [[package]]
@@ -852,7 +848,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fde2f6a4bea1d6e007c4ad38c6839fa71cbb63b6dbf5b595aa38dc9b1093c11"
 dependencies = [
  "rand",
- "serde",
 ]
 
 [[package]]

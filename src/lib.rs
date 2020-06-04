@@ -1,10 +1,11 @@
 use graphql_client::{GraphQLQuery, Response as GQLResponse};
 
-use indexmap::IndexMap;
 use seed::{prelude::*, *};
 use serde::{Deserialize, Serialize};
 
 mod shared;
+
+// Global types and Constant values
 type Name = String;
 type Author = String;
 
@@ -16,6 +17,9 @@ const WS_URL: &str = "ws://c2.local:8000";
 // ------ ------
 macro_rules! generate_query {
     ($query:ident) => {
+        //
+        // graphql_client basics
+        //
         #[derive(GraphQLQuery)]
         #[graphql(
             schema_path = "graphql/schema.graphql",
@@ -27,7 +31,6 @@ macro_rules! generate_query {
 }
 
 generate_query!(QBooks);
-// generate_query!(QBook);
 generate_query!(MCreateBook);
 generate_query!(MDeleteBook);
 
@@ -51,21 +54,19 @@ where
 // ------ ------
 
 fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
+    //
+    // GraphQL Query fetch data
+    //
     orders.perform_cmd(async {
-        // Msg::BooksFetched(send_graphql_request(&QBooks::build_query(q_books::Variables)).await)
-        Msg::BookCreated(
-            send_graphql_request(&MCreateBook::build_query(m_create_book::Variables {
-                name: "AAA".to_string(),
-                author: "BBB".to_string(),
-            }))
-            .await,
-        )
+        Msg::BooksFetched(send_graphql_request(&QBooks::build_query(q_books::Variables)).await)
     });
+    //
+    // Init Model default values
+    //
     Model {
         books: Option::Some(Vec::new()),
         sent_messages_count: 0,
         messages: Vec::new(),
-        input_text: String::new(),
         input_text_name: String::new(),
         input_text_author: String::new(),
         web_socket: create_websocket(orders),
@@ -74,7 +75,9 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
         selected_author: std::default::Default::default(),
     }
 }
-
+//
+// websocket client connect to server
+//
 fn create_websocket(orders: &impl Orders<Msg>) -> WebSocket {
     WebSocket::builder(WS_URL, orders)
         .on_open(|| Msg::WebSocketOpened)
@@ -93,7 +96,6 @@ fn create_websocket(orders: &impl Orders<Msg>) -> WebSocket {
 struct Model {
     sent_messages_count: usize,
     messages: Vec<String>,
-    input_text: String,
     input_text_name: String,
     input_text_author: String,
     selected_name: Option<Name>,
@@ -117,24 +119,22 @@ enum Msg {
     WebSocketClosed(CloseEvent),
     WebSocketFailed,
     ReconnectWebSocket(usize),
-    InputTextChanged(String),
     InputTextNameChanged(String),
     InputTextAuthorChanged(String),
-    SendMessage(shared::ClientMessageGQLPay),
 }
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
+        //
+        // GraphQL functions
+        //
         Msg::BooksFetched(Ok(GQLResponse {
             data: Some(data), ..
         })) => {
             model.books = Some(data.books);
         }
-        Msg::BookCreated(Ok(GQLResponse {
-            data: Some(data), ..
-        })) => {
+        Msg::BookCreated(Ok(GQLResponse { data: Some(_), .. })) => {
             println!("Created Book");
-            // model.books = Some(data.books);
         }
         Msg::BookCreatedClick(name, author) => {
             model.selected_name = Some(name.clone());
@@ -151,6 +151,9 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         }
         Msg::BookCreated(error) => log!(error),
         Msg::BooksFetched(error) => log!(error),
+        //
+        // Websocket functions
+        //
         Msg::WebSocketOpened => {
             model.web_socket_reconnector = None;
             {
@@ -220,19 +223,14 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             log!("Reconnect attempt:", retries);
             model.web_socket = create_websocket(orders);
         }
-        Msg::InputTextChanged(input_text) => {
-            model.input_text = input_text;
-        }
+        //
+        // Handles input change state
+        //
         Msg::InputTextNameChanged(input_text) => {
             model.input_text_name = input_text;
         }
         Msg::InputTextAuthorChanged(input_text) => {
             model.input_text_author = input_text;
-        }
-        Msg::SendMessage(msg) => {
-            model.web_socket.send_json(&msg).unwrap();
-            model.input_text.clear();
-            model.sent_messages_count += 1;
         }
     }
 }
@@ -240,16 +238,25 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 // ------ ------
 //     View
 // ------ ------
-
-fn view(model: &Model) -> Vec<Node<Msg>> {
-    vec![div![
+fn view(model: &Model) -> Node<Msg> {
+    div![
+        style! {
+            St::Color => "#5730B3",
+            St::BackgroundColor => "#1B1B21",
+            St::Margin => "auto",
+            St::Display => "flex",
+            St::FlexDirection => "column",
+            St::JustifyContent => "center",
+            St::AlignItems => "center",
+            St::Width => vh(100),
+            St::Height => vh(100),
+        },
         //
         // HEADER
         //
         div![
             h1!["SecureTheBox Client", C!["title"]],
             div!["Check console log (should be subscribed)"],
-            model.messages.iter().map(|message| p![message]),
             C!["container"],
         ],
         //
@@ -258,31 +265,46 @@ fn view(model: &Model) -> Vec<Node<Msg>> {
         div![
             h3!["Create Book", C!["description"]],
             div![
+                //
+                // Text Input
+                //
                 input![
-                    id!("text1"),
+                    id!("text_input_name"),
                     attrs! {
                         At::Type => "text",
-                        At::Value => model.input_text_name;
+                        At::Value => model.input_text_name,
+                        At::Placeholder => "book name",
                     },
+                    //
+                    // Local State Management
+                    //
                     input_ev(Ev::Input, Msg::InputTextNameChanged),
                     C!["input"],
                 ],
                 input![
-                    id!("text2"),
+                    id!("text_input_author"),
                     attrs! {
                         At::Type => "text",
-                        At::Value => model.input_text_author;
+                        At::Value => model.input_text_author,
+                        At::Placeholder => "book author",
                     },
                     input_ev(Ev::Input, Msg::InputTextAuthorChanged),
                     C!["input"],
                 ],
+                //
+                // Button Click to trigger function
+                //
                 button![
-                    "Create",
+                    "Create Book",
                     ev(Ev::Click, {
                         let name = model.input_text_name.to_owned();
                         let author = model.input_text_author.to_owned();
                         move |_| Msg::BookCreatedClick(name.to_string(), author.to_string())
                     }),
+                    style! {
+                        St::Color => "#1B1B21",
+                        St::BackgroundColor => "#8F5BDE",
+                    },
                     C!["button"]
                 ]
             ],
@@ -293,49 +315,35 @@ fn view(model: &Model) -> Vec<Node<Msg>> {
         if model.web_socket.state() == web_socket::State::Open {
             div![
                 C!["container"],
-                input![
-                    id!("text"),
-                    attrs! {
-                        At::Type => "text",
-                        At::Value => model.input_text;
-                    },
-                    input_ev(Ev::Input, Msg::InputTextChanged),
-                    C!["input"],
-                ],
-                button![
-                    ev(Ev::Click, {
-                        let message_text = model.input_text.to_owned();
-                        move |_| {
-                            Msg::SendMessage(shared::ClientMessageGQLPay {
-                                id: "1".to_string(),
-                                r#type: "start".to_string(),
-                                payload: {
-                                    shared::Payload {
-                                        query: message_text.to_string(),
-                                    }
-                                },
-                            })
-                        }
-                    }),
-                    "Send",
-                    C!["button"]
-                ],
+                //
+                // Close Socket (temp)
+                //
                 button![
                     ev(Ev::Click, |_| Msg::CloseWebSocket),
                     "Close",
+                    style! {
+                        St::Color => "#1B1B21",
+                        St::BackgroundColor => "#8F5BDE",
+                    },
                     C!["button"]
                 ],
             ]
         } else {
             div![p![em!["Connecting or closed"]], C!["container"]]
         },
+        //
         // Footer
+        //
         footer![
             C!["container"],
             p![format!("{} messages", model.messages.len())],
-            p![format!("{} messages sent", model.sent_messages_count)]
+            p![format!("{} messages sent", model.sent_messages_count)],
+            //
+            // Map websocket messages
+            //
+            model.messages.iter().map(|message| p![message]),
         ],
-    ]]
+    ]
 }
 
 // ------ ------
