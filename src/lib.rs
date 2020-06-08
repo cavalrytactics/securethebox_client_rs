@@ -92,10 +92,10 @@ fn create_websocket(orders: &impl Orders<Msg>) -> WebSocket {
 //     Model
 // ------ ------
 
-// #[derive(Default)]
 struct Model {
     sent_messages_count: usize,
-    messages: Vec<String>,
+    // messages: Vec<String>,
+    messages: Vec<Message>,
     input_text_name: String,
     input_text_author: String,
     selected_name: Option<Name>,
@@ -103,6 +103,14 @@ struct Model {
     web_socket: WebSocket,
     web_socket_reconnector: Option<StreamHandle>,
     books: Option<Vec<q_books::QBooksBooks>>,
+}
+
+// Parse GraphQL Subscription Message
+#[derive(serde::Deserialize)]
+pub struct Message {
+    id: String,
+    name: String,
+    author: String,
 }
 
 // ------ ------
@@ -166,15 +174,24 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     .unwrap();
             }
             {
+                //
+                // Start GraphQL Subscription Query
+                //
                 model
                     .web_socket
                     .send_json(&shared::ClientMessageGQLPay {
-                        id: "1".to_string(),
+                        // Set ID of this subscription
+                        id: "some_id".to_string(),
                         r#type: "start".to_string(),
                         payload: {
                             shared::Payload {
-                                query: "subscription {books(mutationType: CREATED) {id}}"
-                                    .to_string(),
+                                query: "subscription {
+                                    books(mutationType: CREATED) {
+                                        id,
+                                        name,
+                                        author
+                                    }
+                                }".to_string(),
                             }
                         },
                     })
@@ -185,10 +202,32 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::MessageReceived(message) => {
             log!("Client received a message");
             let json_message = message.json::<serde_json::Value>().unwrap();
-            log!("{}", json_message);
-            model
-                .messages
-                .push(format!("{}", message.json::<serde_json::Value>().unwrap()));
+            match json_message["type"].to_string().as_str() {
+                "\"data\"" => {
+                    //
+                    // Add message to stack
+                    //
+                    model
+                        .messages
+                        .push(Message{
+                            id: json_message["payload"]["data"]["books"]["id"].to_string(),
+                            name: json_message["payload"]["data"]["books"]["name"].to_string(),
+                            author: json_message["payload"]["data"]["books"]["author"].to_string()
+                        });
+                    log!("Store payload:", json_message);
+                }
+                "\"connection_ack\"" => {
+                    log!("Websocket: Connected");
+                }
+                // Default Catch all
+                _ => {
+                    //
+                    // Unknown type
+                    //
+                    log!("wut Payload:", json_message);
+                    log!("wut Type:",json_message["type"]);
+                }
+            }
         }
         Msg::CloseWebSocket => {
             model.web_socket_reconnector = None;
@@ -198,12 +237,12 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 .unwrap();
         }
         Msg::WebSocketClosed(close_event) => {
-            log!("==================");
+            log!("================================");
             log!("WebSocket connection was closed:");
             log!("Clean:", close_event.was_clean());
             log!("Code:", close_event.code());
             log!("Reason:", close_event.reason());
-            log!("==================");
+            log!("================================");
 
             // Chrome doesn't invoke `on_error` when the connection is lost.
             if !close_event.was_clean() && model.web_socket_reconnector.is_none() {
@@ -241,107 +280,161 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 fn view(model: &Model) -> Node<Msg> {
     div![
         style! {
-            St::Color => "#5730B3",
-            St::BackgroundColor => "#1B1B21",
-            St::Margin => "auto",
-            St::Display => "flex",
-            St::FlexDirection => "column",
-            St::JustifyContent => "center",
-            St::AlignItems => "center",
-            St::Width => vh(100),
+            St::BackgroundColor => "#282a36",
             St::Height => vh(100),
         },
         //
         // HEADER
         //
-        div![
-            h1!["SecureTheBox Client", C!["title"]],
-            div!["Check console log (should be subscribed)"],
-            C!["container"],
+        nav![C!["navbar navbar-expand-lg navbar-dark bg-dark"],
+            a![C!["navbar-brand"], "SECURETHEBOX",
+                style!{
+                    St::Color => "#50fa7b",
+                }
+            ],
+            button![C!["navbar-toggler"],
+                attrs! {
+                    At::Type => "button",
+                },
+                span![C!["navbar-toggler-icon"]]
+            ],
+            div![C!["collapse navbar-collapse"],
+                ul![C!["navbar-nav mr-auto"],
+                    li![C!["nav-item active"],
+                        a![C!["nav-link"], "Home"]
+                    ]
+                ],
+                form![C!["form-inline my-2 my-lg-0"],
+                    button![C!["btn btn-secondary mr-sm-2"], "Sign Up",
+                        attrs! {
+                            At::Type => "button",
+                        },
+                        style! {
+                            St::BackgroundColor => "#9580ff"
+                        }
+                    ],
+                    button![C!["btn btn-secondary mr-sm-2"], "Log in",
+                        attrs! {
+                            At::Type => "button"
+                        },
+                        style! {
+                            St::BackgroundColor => "#50fa7b"
+                        }
+                    ],
+                ]
+            ],
         ],
         //
         // Create Book
         //
-        div![
-            h3!["Create Book", C!["description"]],
+        div![C!["container"],
+            h3![C!["description"], "Create Book",
+                style!{
+                    St::Color => "#50fa7b"
+                },
+            ],
+            form![
+                div![C!["form-group"],
+                    label!["Book Name"],
+                    style![
+                        St::Color => "#9580ff",
+                    ],
+                    input![C!["form-control"],
+                        id!("text_input_name"),
+                        attrs! {
+                            At::Type => "text",
+                            At::Value => model.input_text_name,
+                            At::Placeholder => "book name",
+                        },
+                        input_ev(Ev::Input, Msg::InputTextNameChanged),
+                    ],
+                ],
+                div![C!["form-group"],
+                    label!["Book Author"],
+                    style![
+                        St::Color => "#9580ff",
+                    ],
+                    input![C!["form-control"],
+                        id!("text_input_author"),
+                        attrs! {
+                            At::Type => "text",
+                            At::Value => model.input_text_author,
+                            At::Placeholder => "book author",
+                        },
+                        input_ev(Ev::Input, Msg::InputTextAuthorChanged),
+                    ],
+                ],
+            ],
             div![
-                //
-                // Text Input
-                //
-                input![
-                    id!("text_input_name"),
-                    attrs! {
-                        At::Type => "text",
-                        At::Value => model.input_text_name,
-                        At::Placeholder => "book name",
-                    },
-                    //
-                    // Local State Management
-                    //
-                    input_ev(Ev::Input, Msg::InputTextNameChanged),
-                    C!["input"],
-                ],
-                input![
-                    id!("text_input_author"),
-                    attrs! {
-                        At::Type => "text",
-                        At::Value => model.input_text_author,
-                        At::Placeholder => "book author",
-                    },
-                    input_ev(Ev::Input, Msg::InputTextAuthorChanged),
-                    C!["input"],
-                ],
                 //
                 // Button Click to trigger function
                 //
-                button![
-                    "Create Book",
+                button![C!["btn"], "Create Book",
                     ev(Ev::Click, {
                         let name = model.input_text_name.to_owned();
                         let author = model.input_text_author.to_owned();
                         move |_| Msg::BookCreatedClick(name.to_string(), author.to_string())
                     }),
                     style! {
-                        St::Color => "#1B1B21",
-                        St::BackgroundColor => "#8F5BDE",
-                    },
-                    C!["button"]
+                        St::BackgroundColor => "#50fa7b",
+                    }
                 ]
             ],
-            C!["container"]
-        ],
-        // Websocket Section
-        // Use for scoring engine, server status
-        if model.web_socket.state() == web_socket::State::Open {
             div![
-                C!["container"],
                 //
-                // Close Socket (temp)
+                // Scoring
                 //
-                button![
-                    ev(Ev::Click, |_| Msg::CloseWebSocket),
-                    "Close",
-                    style! {
-                        St::Color => "#1B1B21",
-                        St::BackgroundColor => "#8F5BDE",
-                    },
-                    C!["button"]
+                table![C!["table table-bordered table-dark"],
+                    thead![
+                        tr![
+                            th![ attrs! { At::Scope => "col", }, "#" ],
+                            th![ attrs! { At::Scope => "col", }, "ID" ],
+                            th![ attrs! { At::Scope => "col", }, "Name" ],
+                            th![ attrs! { At::Scope => "col", }, "Author" ],
+                        ]
+                    ],
+                    tbody![
+                        model.messages.iter().map(|message| 
+                            tr![
+                                th![ attrs! { At::Scope => "col", }, "1" ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}",message.id) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}",message.name) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}",message.author) ],
+                                style![
+                                    St::Color => "#FFFFFF",
+                                ],
+                            ]
+                        ),
+                        
+                    ]
                 ],
-            ]
-        } else {
-            div![p![em!["Connecting or closed"]], C!["container"]]
-        },
-        //
+                style! {
+                    St::MarginTop => px(15),
+                }
+            ],
+        ],
         // Footer
         //
-        footer![
+        div![
             C!["container"],
-            p![format!("{} messages", model.messages.len())],
-            p![format!("{} messages sent", model.sent_messages_count)],
+            p![format!("{} messages", model.messages.len()),
+                style![
+                    St::Color => "#FFFFFF",
+                ],
+            ],
+            // p![format!("{} messages sent", model.sent_messages_count),
+            //     style![
+            //         St::Color => "#9580ff",
+            //     ],
+            // ],
             //
             // Map websocket messages
             //
-            model.messages.iter().map(|message| p![message]),
+            // ul![model.messages.iter().map(|message| li![message]),
+            //     style![
+            //         St::Color => "#FFFFFF",
+            //     ],
+            // ]
         ],
     ]
 }
