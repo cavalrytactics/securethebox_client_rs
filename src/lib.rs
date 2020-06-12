@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 mod shared;
 
 // Global types and Constant values
+type Id = String;
 type Name = String;
 type Author = String;
 
@@ -73,6 +74,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
         web_socket_reconnector: None,
         selected_name: std::default::Default::default(),
         selected_author: std::default::Default::default(),
+        selected_id: std::default::Default::default(),
     }
 }
 //
@@ -100,18 +102,45 @@ struct Model {
     input_text_author: String,
     selected_name: Option<Name>,
     selected_author: Option<Author>,
+    selected_id: Option<Id>,
     web_socket: WebSocket,
     web_socket_reconnector: Option<StreamHandle>,
     books: Option<Vec<q_books::QBooksBooks>>,
 }
 
 // Parse GraphQL Subscription Message
-#[derive(serde::Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Message {
     id: String,
     name: String,
     author: String,
 }
+
+// Message from the server to the client.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ServerMessage {
+    id: String,
+    payload: MessagePayload,
+    r#type: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MessagePayload {
+    data: PayloadData,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PayloadData {
+    books: DataBook,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DataBook{
+    id: String,
+    name: String,
+    author: String,
+}
+
 
 // ------ ------
 //    Update
@@ -119,6 +148,8 @@ pub struct Message {
 
 enum Msg {
     BooksFetched(fetch::Result<GQLResponse<q_books::ResponseData>>),
+    BookDeleted(fetch::Result<GQLResponse<q_books::ResponseData>>),
+    BookDeletedClick(Id),
     BookCreated(fetch::Result<GQLResponse<q_books::ResponseData>>),
     BookCreatedClick(Name, Author),
     WebSocketOpened,
@@ -141,9 +172,14 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         })) => {
             model.books = Some(data.books);
         }
-        Msg::BookCreated(Ok(GQLResponse { data: Some(_), .. })) => {
-            println!("Created Book");
+        Msg::BookCreated(Ok(GQLResponse { 
+            data: Some(_), .. 
+        })) => {
+            log!("Created Book");
         }
+        //
+        // Trigger query on click
+        //
         Msg::BookCreatedClick(name, author) => {
             model.selected_name = Some(name.clone());
             model.selected_author = Some(author.clone());
@@ -158,6 +194,27 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             });
         }
         Msg::BookCreated(error) => log!(error),
+        Msg::BookDeleted(Ok(GQLResponse { 
+            data: Some(_), .. 
+        })) => {
+            log!("Deleted Book");
+        }
+        Msg::BookDeletedClick(id) => {
+            model.selected_id = Some(id.clone());
+            orders.perform_cmd(async {
+                Msg::BookDeleted(
+                    send_graphql_request(&MDeleteBook::build_query(m_delete_book::Variables {
+                       id
+                    }))
+                    .await,
+                )
+            });
+            if let Some(pos) = model.messages.iter().position(|x| x.id == id) {
+                model.messages.remove(pos);
+            }
+            
+        }
+        Msg::BookDeleted(error) => log!(error),
         Msg::BooksFetched(error) => log!(error),
         //
         // Websocket functions
@@ -173,10 +230,10 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     })
                     .unwrap();
             }
+            //
+            // Start GraphQL Subscription Query
+            //
             {
-                //
-                // Start GraphQL Subscription Query
-                //
                 model
                     .web_socket
                     .send_json(&shared::ClientMessageGQLPay {
@@ -200,33 +257,20 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             log!("WebSocket connection is open now");
         }
         Msg::MessageReceived(message) => {
+
             log!("Client received a message");
             let json_message = message.json::<serde_json::Value>().unwrap();
-            match json_message["type"].to_string().as_str() {
-                "\"data\"" => {
-                    //
-                    // Add message to stack
-                    //
-                    model
-                        .messages
-                        .push(Message{
-                            id: json_message["payload"]["data"]["books"]["id"].to_string(),
-                            name: json_message["payload"]["data"]["books"]["name"].to_string(),
-                            author: json_message["payload"]["data"]["books"]["author"].to_string()
-                        });
-                    log!("Store payload:", json_message);
-                }
-                "\"connection_ack\"" => {
-                    log!("Websocket: Connected");
-                }
-                // Default Catch all
-                _ => {
-                    //
-                    // Unknown type
-                    //
-                    log!("wut Payload:", json_message);
-                    log!("wut Type:",json_message["type"]);
-                }
+            if json_message["type"] == "connection_ack" {
+                log!("YES",json_message);
+
+            } else if json_message["type"] == "data" {
+                model
+                    .messages
+                    .push(Message {
+                        id: json_message["payload"]["data"]["books"]["id"].to_string().replace("\"", ""),
+                        name: json_message["payload"]["data"]["books"]["name"].to_string().replace("\"", ""),
+                        author: json_message["payload"]["data"]["books"]["author"].to_string().replace("\"", ""),
+                    });
             }
         }
         Msg::CloseWebSocket => {
@@ -278,7 +322,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 //     View
 // ------ ------
 fn view(model: &Model) -> Node<Msg> {
-    div![
+    div![C!["overflow-auto"],
         style! {
             St::BackgroundColor => "#282a36",
             St::Height => vh(100),
@@ -287,15 +331,13 @@ fn view(model: &Model) -> Node<Msg> {
         // HEADER
         //
         nav![C!["navbar navbar-expand-lg navbar-dark bg-dark"],
-            a![C!["navbar-brand"], "SECURETHEBOX",
+            a![C!["navbar-brand"], "LOGO",
                 style!{
                     St::Color => "#50fa7b",
                 }
             ],
             button![C!["navbar-toggler"],
-                attrs! {
-                    At::Type => "button",
-                },
+                attrs! { At::Type => "button", },
                 span![C!["navbar-toggler-icon"]]
             ],
             div![C!["collapse navbar-collapse"],
@@ -306,17 +348,13 @@ fn view(model: &Model) -> Node<Msg> {
                 ],
                 form![C!["form-inline my-2 my-lg-0"],
                     button![C!["btn btn-secondary mr-sm-2"], "Sign Up",
-                        attrs! {
-                            At::Type => "button",
-                        },
+                        attrs! { At::Type => "button", },
                         style! {
                             St::BackgroundColor => "#9580ff"
                         }
                     ],
                     button![C!["btn btn-secondary mr-sm-2"], "Log in",
-                        attrs! {
-                            At::Type => "button"
-                        },
+                        attrs! { At::Type => "button" },
                         style! {
                             St::BackgroundColor => "#50fa7b"
                         }
@@ -365,76 +403,79 @@ fn view(model: &Model) -> Node<Msg> {
                     ],
                 ],
             ],
-            div![
-                //
-                // Button Click to trigger function
-                //
-                button![C!["btn"], "Create Book",
-                    ev(Ev::Click, {
-                        let name = model.input_text_name.to_owned();
-                        let author = model.input_text_author.to_owned();
-                        move |_| Msg::BookCreatedClick(name.to_string(), author.to_string())
-                    }),
-                    style! {
-                        St::BackgroundColor => "#50fa7b",
-                    }
-                ]
+            div![C!["container"],
+                div![C!["row"],
+                    div![C!["col-sm"],
+                        //
+                        // Button Click to trigger CREATE function
+                        //
+                        button![C!["btn"], "Create Book",
+                            ev(Ev::Click, {
+                                let name = model.input_text_name.to_owned();
+                                let author = model.input_text_author.to_owned();
+                                move |_| Msg::BookCreatedClick(name.to_string(), author.to_string())
+                            }),
+                            style! {
+                                St::BackgroundColor => "#50fa7b",
+                            }
+                        ],
+                    ],
+                    //
+                    // # of websocket messages
+                    //
+                    div![C!["col-sm"],
+                        p![format!("{} messages", model.messages.len()),
+                            style![
+                                St::Color => "#FFFFFF",
+                            ],
+                        ],
+                    ]
+                ],
             ],
             div![
                 //
                 // Scoring
                 //
-                table![C!["table table-bordered table-dark"],
+                table![C!["table table-striped table-bordered table-dark"],
                     thead![
                         tr![
-                            th![ attrs! { At::Scope => "col", }, "#" ],
                             th![ attrs! { At::Scope => "col", }, "ID" ],
                             th![ attrs! { At::Scope => "col", }, "Name" ],
                             th![ attrs! { At::Scope => "col", }, "Author" ],
+                            th![ attrs! { At::Scope => "col", }, "Action" ],
                         ]
                     ],
                     tbody![
-                        model.messages.iter().map(|message| 
+                        model.messages.iter().map(|message|
                             tr![
-                                th![ attrs! { At::Scope => "col", }, "1" ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}",message.id) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}",message.name) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}",message.author) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.id) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.name) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.author) ],
+                                td![ attrs! { At::Scope => "col", }, 
+                                    button![C!["btn"], format!("Delete Book {}", message.id),
+                                        attrs!{ At::Value => &message.id },
+                                        {
+                                            let id = message.id.clone();
+                                            ev(Ev::Click, {
+                                                move |_| Msg::BookDeletedClick(id)
+                                            })
+                                        },
+                                        style! {
+                                            St::BackgroundColor => "#50fa7b",
+                                        }
+                                    ],
+                                ],
                                 style![
                                     St::Color => "#FFFFFF",
                                 ],
                             ]
                         ),
-                        
                     ]
                 ],
                 style! {
                     St::MarginTop => px(15),
                 }
             ],
-        ],
-        // Footer
-        //
-        div![
-            C!["container"],
-            p![format!("{} messages", model.messages.len()),
-                style![
-                    St::Color => "#FFFFFF",
-                ],
-            ],
-            // p![format!("{} messages sent", model.sent_messages_count),
-            //     style![
-            //         St::Color => "#9580ff",
-            //     ],
-            // ],
-            //
-            // Map websocket messages
-            //
-            // ul![model.messages.iter().map(|message| li![message]),
-            //     style![
-            //         St::Color => "#FFFFFF",
-            //     ],
-            // ]
         ],
     ]
 }
