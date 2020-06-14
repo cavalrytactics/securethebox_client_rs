@@ -10,6 +10,10 @@ mutation MCreateBook($name: String!, $author: String!) {
     createBook(name: $name, author: $author)
 }
 
+mutation MUpdateBook($id: ID!, $name: String!, $author: String!) {
+    updateBook(id: $id, name: $name, author: $author)
+}
+
 mutation MDeleteBook($id: ID!) {
     deleteBook(id: $id)
 }

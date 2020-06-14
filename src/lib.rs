@@ -2,6 +2,7 @@ use graphql_client::{GraphQLQuery, Response as GQLResponse};
 
 use seed::{prelude::*, *};
 use serde::{Deserialize, Serialize};
+use serde_json::{Result, Value, json};
 
 mod shared;
 
@@ -33,6 +34,7 @@ macro_rules! generate_query {
 
 generate_query!(QBooks);
 generate_query!(MCreateBook);
+generate_query!(MUpdateBook);
 generate_query!(MDeleteBook);
 
 async fn send_graphql_request<V, T>(variables: &V) -> fetch::Result<T>
@@ -61,12 +63,12 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders.perform_cmd(async {
         Msg::BooksFetched(send_graphql_request(&QBooks::build_query(q_books::Variables)).await)
     });
+
     //
     // Init Model default values
     //
     Model {
         books: Option::Some(Vec::new()),
-        sent_messages_count: 0,
         messages: Vec::new(),
         input_text_name: String::new(),
         input_text_author: String::new(),
@@ -75,8 +77,11 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
         selected_name: std::default::Default::default(),
         selected_author: std::default::Default::default(),
         selected_id: std::default::Default::default(),
+        seconds: 0,
+        timer_handle: Some(orders.stream_with_handle(streams::interval(100, || Msg::OnTick))),
     }
 }
+
 //
 // websocket client connect to server
 //
@@ -95,8 +100,6 @@ fn create_websocket(orders: &impl Orders<Msg>) -> WebSocket {
 // ------ ------
 
 struct Model {
-    sent_messages_count: usize,
-    // messages: Vec<String>,
     messages: Vec<Message>,
     input_text_name: String,
     input_text_author: String,
@@ -106,6 +109,8 @@ struct Model {
     web_socket: WebSocket,
     web_socket_reconnector: Option<StreamHandle>,
     books: Option<Vec<q_books::QBooksBooks>>,
+    seconds: u32,
+    timer_handle: Option<StreamHandle>,
 }
 
 // Parse GraphQL Subscription Message
@@ -139,8 +144,8 @@ pub struct DataBook{
     id: String,
     name: String,
     author: String,
+    mutation_type: String,
 }
-
 
 // ------ ------
 //    Update
@@ -150,30 +155,49 @@ enum Msg {
     BooksFetched(fetch::Result<GQLResponse<q_books::ResponseData>>),
     BookDeleted(fetch::Result<GQLResponse<q_books::ResponseData>>),
     BookDeletedClick(Id),
+    BookUpdated(fetch::Result<GQLResponse<q_books::ResponseData>>),
+    BookUpdatedClick(Id, Name, Author),
     BookCreated(fetch::Result<GQLResponse<q_books::ResponseData>>),
     BookCreatedClick(Name, Author),
     WebSocketOpened,
     MessageReceived(WebSocketMessage),
-    CloseWebSocket,
     WebSocketClosed(CloseEvent),
     WebSocketFailed,
     ReconnectWebSocket(usize),
     InputTextNameChanged(String),
     InputTextAuthorChanged(String),
+    OnTick,
 }
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
+        //
+        // Interval
+        //
+        Msg::OnTick => {
+            if model.seconds != 100 {
+                model.seconds += 1;
+            }
+        }
         //
         // GraphQL functions
         //
         Msg::BooksFetched(Ok(GQLResponse {
             data: Some(data), ..
         })) => {
-            model.books = Some(data.books);
+            let vec_books_length = data.books.len();
+            for book_index in 0..vec_books_length {
+                model.messages.push(
+                    Message {
+                        id: data.books[book_index].id.to_string(),
+                        name: data.books[book_index].name.to_string(),
+                        author: data.books[book_index].author.to_string(),
+                    }
+                )
+            }
         }
-        Msg::BookCreated(Ok(GQLResponse { 
-            data: Some(_), .. 
+        Msg::BookCreated(Ok(GQLResponse {
+            data: Some(_), ..
         })) => {
             log!("Created Book");
         }
@@ -194,13 +218,42 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             });
         }
         Msg::BookCreated(error) => log!(error),
-        Msg::BookDeleted(Ok(GQLResponse { 
-            data: Some(_), .. 
+        Msg::BookUpdated(Ok(GQLResponse {
+            data: Some(_), ..
         })) => {
             log!("Deleted Book");
         }
+        Msg::BookUpdatedClick(id, name, author) => {
+            model.selected_id = Some(id.clone());
+            if let Some(index) = model.messages.iter().position(|message| message.id.to_string() == id) {
+                model.messages[index] = Message {
+                    id: id.clone(),
+                    name: name.clone(),
+                    author: author.clone(),
+                }
+            }
+            orders.perform_cmd(async {
+                Msg::BookUpdated(
+                    send_graphql_request(&MUpdateBook::build_query(m_update_book::Variables {
+                        id,
+                        name,
+                        author,
+                    }))
+                    .await,
+                )
+            });
+        }
+        Msg::BookUpdated(error) => log!(error),
+        Msg::BookDeleted(Ok(GQLResponse {
+            data: Some(_), ..
+        })) => {
+            log!("Updated Book");
+        }
         Msg::BookDeletedClick(id) => {
             model.selected_id = Some(id.clone());
+            if let Some(index) = model.messages.iter().position(|message| message.id.to_string() == id) {
+                model.messages.remove(index);
+            }
             orders.perform_cmd(async {
                 Msg::BookDeleted(
                     send_graphql_request(&MDeleteBook::build_query(m_delete_book::Variables {
@@ -209,10 +262,6 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     .await,
                 )
             });
-            if let Some(pos) = model.messages.iter().position(|x| x.id == id) {
-                model.messages.remove(pos);
-            }
-            
         }
         Msg::BookDeleted(error) => log!(error),
         Msg::BooksFetched(error) => log!(error),
@@ -222,8 +271,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::WebSocketOpened => {
             model.web_socket_reconnector = None;
             {
-                model
-                    .web_socket
+                model.web_socket
                     .send_json(&shared::ClientMessageGQLInit {
                         r#type: "connection_init".to_string(),
                         payload: shared::PayloadEmp {},
@@ -234,8 +282,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             // Start GraphQL Subscription Query
             //
             {
-                model
-                    .web_socket
+                model.web_socket
                     .send_json(&shared::ClientMessageGQLPay {
                         // Set ID of this subscription
                         id: "some_id".to_string(),
@@ -243,10 +290,11 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                         payload: {
                             shared::Payload {
                                 query: "subscription {
-                                    books(mutationType: CREATED) {
+                                    books {
                                         id,
                                         name,
-                                        author
+                                        author,
+                                        mutationType,
                                     }
                                 }".to_string(),
                             }
@@ -257,28 +305,39 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             log!("WebSocket connection is open now");
         }
         Msg::MessageReceived(message) => {
-
             log!("Client received a message");
             let json_message = message.json::<serde_json::Value>().unwrap();
+            let book = &json_message["payload"]["data"]["books"];
             if json_message["type"] == "connection_ack" {
-                log!("YES",json_message);
-
+                log!("CONNECTED");
             } else if json_message["type"] == "data" {
-                model
-                    .messages
-                    .push(Message {
-                        id: json_message["payload"]["data"]["books"]["id"].to_string().replace("\"", ""),
-                        name: json_message["payload"]["data"]["books"]["name"].to_string().replace("\"", ""),
-                        author: json_message["payload"]["data"]["books"]["author"].to_string().replace("\"", ""),
-                    });
+                log!("MESSAGE",json_message);
+                let mutation_type = book["mutationType"].to_string().replace("\"", "");
+                let id = book["id"].to_string().replace("\"", "");
+                let name = book["name"].to_string().replace("\"", "");
+                let author = book["author"].to_string().replace("\"", "");
+                match mutation_type.as_str() {
+                    "CREATED" => {
+                        model.messages
+                            .push(Message { id, name, author, });
+                    }
+                    "UPDATED" => {
+                        if let Some(index) = model.messages.iter().position(|message| message.id.to_string() == id) {
+                            model.messages[index] = Message {
+                                id: id.clone(),
+                                name: name.clone(),
+                                author: author.clone(),
+                            }
+                        }
+                    }
+                    "DELETED" => {
+                        if let Some(index) = model.messages.iter().position(|message| message.id.to_string() == id) {
+                            model.messages.remove(index);
+                        }
+                    }
+                    _ => { }
+                } 
             }
-        }
-        Msg::CloseWebSocket => {
-            model.web_socket_reconnector = None;
-            model
-                .web_socket
-                .close(None, Some("user clicked Close button"))
-                .unwrap();
         }
         Msg::WebSocketClosed(close_event) => {
             log!("================================");
@@ -406,9 +465,7 @@ fn view(model: &Model) -> Node<Msg> {
             div![C!["container"],
                 div![C!["row"],
                     div![C!["col-sm"],
-                        //
                         // Button Click to trigger CREATE function
-                        //
                         button![C!["btn"], "Create Book",
                             ev(Ev::Click, {
                                 let name = model.input_text_name.to_owned();
@@ -424,18 +481,31 @@ fn view(model: &Model) -> Node<Msg> {
                     // # of websocket messages
                     //
                     div![C!["col-sm"],
-                        p![format!("{} messages", model.messages.len()),
+                        p![format!("messages: {}", model.messages.len()),
                             style![
                                 St::Color => "#FFFFFF",
                             ],
                         ],
+                    ],
+                    //
+                    // Interval update
+                    //
+                    div![C!["col-sm"],
+                        p![C!["progress"],
+                            div![C!["progress-bar progress-bar-striped progress-bar-animated"],
+                                style![
+                                    St::Width => format!("{}%", model.seconds)
+                                ],
+                                format!("{}%", model.seconds)
+                            ]
+                        ],
                     ]
                 ],
             ],
+            //
+            // Scoring
+            //
             div![
-                //
-                // Scoring
-                //
                 table![C!["table table-striped table-bordered table-dark"],
                     thead![
                         tr![
@@ -451,8 +521,25 @@ fn view(model: &Model) -> Node<Msg> {
                                 td![ attrs! { At::Scope => "col", }, format!("{}", message.id) ],
                                 td![ attrs! { At::Scope => "col", }, format!("{}", message.name) ],
                                 td![ attrs! { At::Scope => "col", }, format!("{}", message.author) ],
-                                td![ attrs! { At::Scope => "col", }, 
-                                    button![C!["btn"], format!("Delete Book {}", message.id),
+                                td![ attrs! { At::Scope => "col", },
+                                    button![C!["btn"],
+                                        img![
+                                            attrs!{ At::Src => "public/icons/pencil-square.svg" }
+                                        ],
+                                        attrs!{ At::Value => &message.id },
+                                        {
+                                            let id = message.id.clone();
+                                            let name = "test".to_string();
+                                            let author = "test".to_string();
+                                            ev(Ev::Click, {
+                                                move |_| Msg::BookUpdatedClick(id, name, author)
+                                            })
+                                        },
+                                        style! {
+                                            St::BackgroundColor => "#50fa7b",
+                                        }
+                                    ],
+                                    button![C!["btn"], format!("Delete"),
                                         attrs!{ At::Value => &message.id },
                                         {
                                             let id = message.id.clone();

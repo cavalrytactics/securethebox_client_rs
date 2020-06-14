@@ -25,6 +25,7 @@ type BookChanged {
 
 enum MutationType {
   CREATED
+  UPDATED
   DELETED
 }
 
@@ -35,11 +36,11 @@ type QueryRoot {
 
 type MutationRoot {
   createBook(name: String!, author: String!): Boolean!
+  updateBook(id: ID!, name: String!, author: String!): Boolean!
   deleteBook(id: ID!): Boolean!
 }
 
 type SubscriptionRoot {
-  interval(n: Int! = 1): Int!
   books(mutationType: MutationType): BookChanged!
 }
 
