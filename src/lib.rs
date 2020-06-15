@@ -2,7 +2,6 @@ use graphql_client::{GraphQLQuery, Response as GQLResponse};
 
 use seed::{prelude::*, *};
 use serde::{Deserialize, Serialize};
-use serde_json::{Result, Value, json};
 
 mod shared;
 
@@ -10,6 +9,7 @@ mod shared;
 type Id = String;
 type Name = String;
 type Author = String;
+type Points = String;
 
 const API_URL: &str = "http://c2.local:8000";
 const WS_URL: &str = "ws://c2.local:8000";
@@ -68,14 +68,16 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
     // Init Model default values
     //
     Model {
-        books: Option::Some(Vec::new()),
+        // books: Option::Some(Vec::new()),
         messages: Vec::new(),
         input_text_name: String::new(),
         input_text_author: String::new(),
+        input_text_points: String::new(),
         web_socket: create_websocket(orders),
         web_socket_reconnector: None,
         selected_name: std::default::Default::default(),
         selected_author: std::default::Default::default(),
+        selected_points: std::default::Default::default(),
         selected_id: std::default::Default::default(),
         seconds: 0,
         timer_handle: Some(orders.stream_with_handle(streams::interval(100, || Msg::OnTick))),
@@ -103,12 +105,14 @@ struct Model {
     messages: Vec<Message>,
     input_text_name: String,
     input_text_author: String,
+    input_text_points: String,
     selected_name: Option<Name>,
     selected_author: Option<Author>,
+    selected_points: Option<Points>,
     selected_id: Option<Id>,
     web_socket: WebSocket,
     web_socket_reconnector: Option<StreamHandle>,
-    books: Option<Vec<q_books::QBooksBooks>>,
+    // books: Option<Vec<q_books::QBooksBooks>>,
     seconds: u32,
     timer_handle: Option<StreamHandle>,
 }
@@ -119,6 +123,7 @@ pub struct Message {
     id: String,
     name: String,
     author: String,
+    points: String,
 }
 
 // Message from the server to the client.
@@ -141,10 +146,11 @@ pub struct PayloadData {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DataBook{
+    mutation_type: String,
     id: String,
     name: String,
     author: String,
-    mutation_type: String,
+    points: String,
 }
 
 // ------ ------
@@ -156,9 +162,9 @@ enum Msg {
     BookDeleted(fetch::Result<GQLResponse<q_books::ResponseData>>),
     BookDeletedClick(Id),
     BookUpdated(fetch::Result<GQLResponse<q_books::ResponseData>>),
-    BookUpdatedClick(Id, Name, Author),
+    BookUpdatedClick(Id, Name, Author, Points),
     BookCreated(fetch::Result<GQLResponse<q_books::ResponseData>>),
-    BookCreatedClick(Name, Author),
+    BookCreatedClick(Name, Author, Points),
     WebSocketOpened,
     MessageReceived(WebSocketMessage),
     WebSocketClosed(CloseEvent),
@@ -166,6 +172,7 @@ enum Msg {
     ReconnectWebSocket(usize),
     InputTextNameChanged(String),
     InputTextAuthorChanged(String),
+    InputTextPointsChanged(String),
     OnTick,
 }
 
@@ -175,8 +182,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         // Interval
         //
         Msg::OnTick => {
-            if model.seconds != 100 {
-                model.seconds += 1;
+            if model.seconds != 100 { model.seconds += 1;
             }
         }
         //
@@ -192,6 +198,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                         id: data.books[book_index].id.to_string(),
                         name: data.books[book_index].name.to_string(),
                         author: data.books[book_index].author.to_string(),
+                        points: data.books[book_index].points.to_string(),
                     }
                 )
             }
@@ -204,14 +211,16 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         //
         // Trigger query on click
         //
-        Msg::BookCreatedClick(name, author) => {
+        Msg::BookCreatedClick(name, author, points) => {
             model.selected_name = Some(name.clone());
             model.selected_author = Some(author.clone());
+            model.selected_points = Some(points.clone());
             orders.perform_cmd(async {
                 Msg::BookCreated(
                     send_graphql_request(&MCreateBook::build_query(m_create_book::Variables {
                         name,
                         author,
+                        points,
                     }))
                     .await,
                 )
@@ -223,13 +232,14 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         })) => {
             log!("Deleted Book");
         }
-        Msg::BookUpdatedClick(id, name, author) => {
+        Msg::BookUpdatedClick(id, name, author, points) => {
             model.selected_id = Some(id.clone());
             if let Some(index) = model.messages.iter().position(|message| message.id.to_string() == id) {
                 model.messages[index] = Message {
                     id: id.clone(),
                     name: name.clone(),
                     author: author.clone(),
+                    points: points.clone(),
                 }
             }
             orders.perform_cmd(async {
@@ -238,6 +248,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                         id,
                         name,
                         author,
+                        points,
                     }))
                     .await,
                 )
@@ -291,10 +302,11 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                             shared::Payload {
                                 query: "subscription {
                                     books {
+                                        mutationType,
                                         id,
                                         name,
                                         author,
-                                        mutationType,
+                                        points,
                                     }
                                 }".to_string(),
                             }
@@ -316,10 +328,11 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 let id = book["id"].to_string().replace("\"", "");
                 let name = book["name"].to_string().replace("\"", "");
                 let author = book["author"].to_string().replace("\"", "");
+                let points = book["points"].to_string().replace("\"", "");
                 match mutation_type.as_str() {
                     "CREATED" => {
                         model.messages
-                            .push(Message { id, name, author, });
+                            .push(Message { id, name, author, points });
                     }
                     "UPDATED" => {
                         if let Some(index) = model.messages.iter().position(|message| message.id.to_string() == id) {
@@ -327,6 +340,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                                 id: id.clone(),
                                 name: name.clone(),
                                 author: author.clone(),
+                                points: points.clone(),
                             }
                         }
                     }
@@ -336,7 +350,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                         }
                     }
                     _ => { }
-                } 
+                }
             }
         }
         Msg::WebSocketClosed(close_event) => {
@@ -373,6 +387,9 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         }
         Msg::InputTextAuthorChanged(input_text) => {
             model.input_text_author = input_text;
+        }
+        Msg::InputTextPointsChanged(input_text) => {
+            model.input_text_points = input_text;
         }
     }
 }
@@ -432,7 +449,7 @@ fn view(model: &Model) -> Node<Msg> {
             ],
             form![
                 div![C!["form-group"],
-                    label!["Book Name"],
+                    label!["name"],
                     style![
                         St::Color => "#9580ff",
                     ],
@@ -441,13 +458,13 @@ fn view(model: &Model) -> Node<Msg> {
                         attrs! {
                             At::Type => "text",
                             At::Value => model.input_text_name,
-                            At::Placeholder => "book name",
+                            At::Placeholder => "name",
                         },
                         input_ev(Ev::Input, Msg::InputTextNameChanged),
                     ],
                 ],
                 div![C!["form-group"],
-                    label!["Book Author"],
+                    label!["author"],
                     style![
                         St::Color => "#9580ff",
                     ],
@@ -456,9 +473,24 @@ fn view(model: &Model) -> Node<Msg> {
                         attrs! {
                             At::Type => "text",
                             At::Value => model.input_text_author,
-                            At::Placeholder => "book author",
+                            At::Placeholder => "author",
                         },
                         input_ev(Ev::Input, Msg::InputTextAuthorChanged),
+                    ],
+                ],
+                div![C!["form-group"],
+                    label!["points"],
+                    style![
+                        St::Color => "#9580ff",
+                    ],
+                    input![C!["form-control"],
+                        id!("text_input_points"),
+                        attrs! {
+                            At::Type => "text",
+                            At::Value => model.input_text_points,
+                            At::Placeholder => "points",
+                        },
+                        input_ev(Ev::Input, Msg::InputTextPointsChanged),
                     ],
                 ],
             ],
@@ -470,7 +502,8 @@ fn view(model: &Model) -> Node<Msg> {
                             ev(Ev::Click, {
                                 let name = model.input_text_name.to_owned();
                                 let author = model.input_text_author.to_owned();
-                                move |_| Msg::BookCreatedClick(name.to_string(), author.to_string())
+                                let points = model.input_text_points.to_owned();
+                                move |_| Msg::BookCreatedClick(name.to_string(), author.to_string(), points.to_string())
                             }),
                             style! {
                                 St::BackgroundColor => "#50fa7b",
@@ -512,6 +545,7 @@ fn view(model: &Model) -> Node<Msg> {
                             th![ attrs! { At::Scope => "col", }, "ID" ],
                             th![ attrs! { At::Scope => "col", }, "Name" ],
                             th![ attrs! { At::Scope => "col", }, "Author" ],
+                            th![ attrs! { At::Scope => "col", }, "Points" ],
                             th![ attrs! { At::Scope => "col", }, "Action" ],
                         ]
                     ],
@@ -521,18 +555,17 @@ fn view(model: &Model) -> Node<Msg> {
                                 td![ attrs! { At::Scope => "col", }, format!("{}", message.id) ],
                                 td![ attrs! { At::Scope => "col", }, format!("{}", message.name) ],
                                 td![ attrs! { At::Scope => "col", }, format!("{}", message.author) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.points) ],
                                 td![ attrs! { At::Scope => "col", },
-                                    button![C!["btn"],
-                                        img![
-                                            attrs!{ At::Src => "public/icons/pencil-square.svg" }
-                                        ],
+                                    button![C!["btn"], format!("Update"),
                                         attrs!{ At::Value => &message.id },
                                         {
                                             let id = message.id.clone();
                                             let name = "test".to_string();
                                             let author = "test".to_string();
+                                            let points = "test".to_string();
                                             ev(Ev::Click, {
-                                                move |_| Msg::BookUpdatedClick(id, name, author)
+                                                move |_| Msg::BookUpdatedClick(id, name, author, points)
                                             })
                                         },
                                         style! {

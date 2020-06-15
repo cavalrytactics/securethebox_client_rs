@@ -3,15 +3,16 @@ query QBooks {
         id
         name
         author
+        points
     }
 }
 
-mutation MCreateBook($name: String!, $author: String!) {
-    createBook(name: $name, author: $author)
+mutation MCreateBook($name: String!, $author: String!, $points: String!) {
+    createBook(name: $name, author: $author, points: $points)
 }
 
-mutation MUpdateBook($id: ID!, $name: String!, $author: String!) {
-    updateBook(id: $id, name: $name, author: $author)
+mutation MUpdateBook($id: ID!, $name: String!, $author: String!, $points: String!) {
+    updateBook(id: $id, name: $name, author: $author, points: $points)
 }
 
 mutation MDeleteBook($id: ID!) {

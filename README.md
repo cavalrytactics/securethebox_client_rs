@@ -1,0 +1,17 @@
+- [x] query
+- [x] mutation
+- [x] subscriptions
+- [ ] bulk
+- [ ] relations
+- [x] create
+- [x] update
+- [x] delete
+- [ ] sort
+- [ ] filter
+- [ ] sign up
+- [ ] sign in
+- [ ] challenges create
+- [ ] challenges update
+- [ ] challenges delete
+- [ ] challenges list
+- [ ] 

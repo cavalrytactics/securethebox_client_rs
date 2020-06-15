@@ -8,9 +8,11 @@ enum CacheControlScope {
 }
 
 type Book {
+  mutationType: MutationType!
   id: ID!
   name: String!
   author: String!
+  points: String!
 }
 
 type Query {
@@ -35,8 +37,8 @@ type QueryRoot {
 }
 
 type MutationRoot {
-  createBook(name: String!, author: String!): Boolean!
-  updateBook(id: ID!, name: String!, author: String!): Boolean!
+  createBook(name: String!, author: String!, points: String!): Boolean!
+  updateBook(id: ID!, name: String!, author: String!, points: String!): Boolean!
   deleteBook(id: ID!): Boolean!
 }
 
