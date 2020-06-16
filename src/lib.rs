@@ -2,6 +2,8 @@ use graphql_client::{GraphQLQuery, Response as GQLResponse};
 
 use seed::{prelude::*, *};
 use serde::{Deserialize, Serialize};
+// Allows sort_by
+use itertools::Itertools;
 
 mod shared;
 
@@ -11,6 +13,7 @@ type Name = String;
 type Author = String;
 type Points = String;
 
+// TODO: Change these urls for production
 const API_URL: &str = "http://c2.local:8000";
 const WS_URL: &str = "ws://c2.local:8000";
 
@@ -72,7 +75,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
         messages: Vec::new(),
         input_text_name: String::new(),
         input_text_author: String::new(),
-        input_text_points: String::new(),
+        input_text_points: std::default::Default::default(),
         web_socket: create_websocket(orders),
         web_socket_reconnector: None,
         selected_name: std::default::Default::default(),
@@ -123,7 +126,7 @@ pub struct Message {
     id: String,
     name: String,
     author: String,
-    points: String,
+    points: u8,
 }
 
 // Message from the server to the client.
@@ -150,7 +153,7 @@ pub struct DataBook{
     id: String,
     name: String,
     author: String,
-    points: String,
+    points: u8,
 }
 
 // ------ ------
@@ -198,7 +201,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                         id: data.books[book_index].id.to_string(),
                         name: data.books[book_index].name.to_string(),
                         author: data.books[book_index].author.to_string(),
-                        points: data.books[book_index].points.to_string(),
+                        points: data.books[book_index].points.to_string().parse().unwrap(),
                     }
                 )
             }
@@ -239,7 +242,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     id: id.clone(),
                     name: name.clone(),
                     author: author.clone(),
-                    points: points.clone(),
+                    points: points.clone().parse().unwrap(),
                 }
             }
             orders.perform_cmd(async {
@@ -328,7 +331,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 let id = book["id"].to_string().replace("\"", "");
                 let name = book["name"].to_string().replace("\"", "");
                 let author = book["author"].to_string().replace("\"", "");
-                let points = book["points"].to_string().replace("\"", "");
+                let points = book["points"].to_string().replace("\"", "").parse().unwrap();
                 match mutation_type.as_str() {
                     "CREATED" => {
                         model.messages
@@ -486,7 +489,7 @@ fn view(model: &Model) -> Node<Msg> {
                     input![C!["form-control"],
                         id!("text_input_points"),
                         attrs! {
-                            At::Type => "text",
+                            At::Type => "number",
                             At::Value => model.input_text_points,
                             At::Placeholder => "points",
                         },
@@ -540,8 +543,12 @@ fn view(model: &Model) -> Node<Msg> {
             //
             div![
                 table![C!["table table-striped table-bordered table-dark"],
+                    //
+                    // Table headers
+                    //
                     thead![
                         tr![
+                            th![ attrs! { At::Scope => "col", }, "#" ],
                             th![ attrs! { At::Scope => "col", }, "ID" ],
                             th![ attrs! { At::Scope => "col", }, "Name" ],
                             th![ attrs! { At::Scope => "col", }, "Author" ],
@@ -550,20 +557,34 @@ fn view(model: &Model) -> Node<Msg> {
                         ]
                     ],
                     tbody![
-                        model.messages.iter().map(|message|
+                        //
+                        // Sort rows in table in decending order by 'points' key/value
+                        // Label new position
+                        //
+                        // GOTCHA 1: using enumerate() after sorted_by well create
+                        // sorted index
+                        //
+                        // GOTCHA 2: enumerate() creates a tuple (index, &thing)
+                        // index = 0, &thing = 1
+                        //
+                        // Position/Index = some.0
+                        // Key/Value = some.1.key
+                        //
+                        model.messages.iter().sorted_by(|a, b| Ord::cmp(&b.points, &a.points)).enumerate().map(| message |
                             tr![
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.id) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.name) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.author) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.points) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.0+1 ) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.id) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.name) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.author) ],
+                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.points) ],
                                 td![ attrs! { At::Scope => "col", },
                                     button![C!["btn"], format!("Update"),
-                                        attrs!{ At::Value => &message.id },
+                                        attrs!{ At::Value => &message.1.id },
                                         {
-                                            let id = message.id.clone();
+                                            let id = message.1.id.clone();
                                             let name = "test".to_string();
                                             let author = "test".to_string();
-                                            let points = "test".to_string();
+                                            let points = "100".to_string();
                                             ev(Ev::Click, {
                                                 move |_| Msg::BookUpdatedClick(id, name, author, points)
                                             })
@@ -573,9 +594,9 @@ fn view(model: &Model) -> Node<Msg> {
                                         }
                                     ],
                                     button![C!["btn"], format!("Delete"),
-                                        attrs!{ At::Value => &message.id },
+                                        attrs!{ At::Value => &message.1.id },
                                         {
-                                            let id = message.id.clone();
+                                            let id = message.1.id.clone();
                                             ev(Ev::Click, {
                                                 move |_| Msg::BookDeletedClick(id)
                                             })
