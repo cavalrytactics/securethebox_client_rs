@@ -83,7 +83,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
         selected_points: std::default::Default::default(),
         selected_id: std::default::Default::default(),
         seconds: 0,
-        timer_handle: Some(orders.stream_with_handle(streams::interval(100, || Msg::OnTick))),
+        timer_handle: Some(orders.stream_with_handle(streams::interval(1000, || Msg::OnTick))),
     }
 }
 
@@ -116,7 +116,7 @@ struct Model {
     web_socket: WebSocket,
     web_socket_reconnector: Option<StreamHandle>,
     // books: Option<Vec<q_books::QBooksBooks>>,
-    seconds: u32,
+    seconds: i64,
     timer_handle: Option<StreamHandle>,
 }
 
@@ -185,7 +185,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         // Interval
         //
         Msg::OnTick => {
-            if model.seconds != 100 { model.seconds += 1;
+            if model.seconds != 600000 { model.seconds += 1000;
             }
         }
         //
@@ -401,6 +401,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 //     View
 // ------ ------
 fn view(model: &Model) -> Node<Msg> {
+    let mut clock = shared::Clock::new();
     div![C!["overflow-auto"],
         style! {
             St::BackgroundColor => "#282a36",
@@ -548,12 +549,17 @@ fn view(model: &Model) -> Node<Msg> {
                     //
                     thead![
                         tr![
-                            th![ attrs! { At::Scope => "col", }, "#" ],
-                            th![ attrs! { At::Scope => "col", }, "ID" ],
-                            th![ attrs! { At::Scope => "col", }, "Name" ],
-                            th![ attrs! { At::Scope => "col", }, "Author" ],
-                            th![ attrs! { At::Scope => "col", }, "Points" ],
-                            th![ attrs! { At::Scope => "col", }, "Action" ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, "#" ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, "ID" ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, "Name" ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, "Author" ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, "Points" ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["A"],br![],span!["100"] ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["B"],br![],span!["200"] ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["C"],br![],span!["300"] ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["D"],br![],span!["400"] ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["E"],br![],span!["500"] ],
+                            th![ C!["text-center"], attrs! { At::Scope => "col", }, "Actions" ],
                         ]
                     ],
                     tbody![
@@ -571,13 +577,20 @@ fn view(model: &Model) -> Node<Msg> {
                         // Key/Value = some.1.key
                         //
                         model.messages.iter().sorted_by(|a, b| Ord::cmp(&b.points, &a.points)).enumerate().map(| message |
+                            {
+                                clock.set_time_ms(model.seconds);
                             tr![
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.0+1 ) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.id) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.name) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.author) ],
-                                td![ attrs! { At::Scope => "col", }, format!("{}", message.1.points) ],
-                                td![ attrs! { At::Scope => "col", },
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, format!("{}", message.0+1 ) ],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, format!("{}", message.1.id) ],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, format!("{}", message.1.name) ],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, format!("{}", message.1.author) ],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, format!("{}", message.1.points) ],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, a![format!("{}", "Score")],br![],span![format!("{}", clock.get_time()) ]],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, a![format!("{}", "Score")],br![],span![format!("{}", clock.get_time()) ]],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, a![format!("{}", "Score")],br![],span![format!("{}", clock.get_time()) ]],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, a![format!("{}", "Score")],br![],span![format!("{}", clock.get_time()) ]],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", }, a![format!("{}", "Score")],br![],span![format!("{}", clock.get_time()) ]],
+                                td![ C!["text-center"], attrs! { At::Scope => "col", },
                                     button![C!["btn"], format!("Update"),
                                         attrs!{ At::Value => &message.1.id },
                                         {
@@ -610,6 +623,7 @@ fn view(model: &Model) -> Node<Msg> {
                                     St::Color => "#FFFFFF",
                                 ],
                             ]
+                            },
                         ),
                     ]
                 ],
