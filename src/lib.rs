@@ -1,11 +1,10 @@
 use graphql_client::{GraphQLQuery, Response as GQLResponse};
-
+mod shared;
 use seed::{prelude::*, *};
 use serde::{Deserialize, Serialize};
 // Allows sort_by
 use itertools::Itertools;
-
-mod shared;
+use rasciigraph::{plot, Config};
 
 // Global types and Constant values
 type Id = String;
@@ -83,9 +82,15 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
         selected_points: std::default::Default::default(),
         selected_id: std::default::Default::default(),
         seconds: 0,
+        //
+        // Generate 10 vec values = 0.0
+        //
+        graph: vec![0.0; 100],
+        problems: vec![],
         timer_handle: Some(orders.stream_with_handle(streams::interval(1000, || Msg::OnTick))),
     }
 }
+
 
 //
 // websocket client connect to server
@@ -117,6 +122,8 @@ struct Model {
     web_socket_reconnector: Option<StreamHandle>,
     // books: Option<Vec<q_books::QBooksBooks>>,
     seconds: i64,
+    graph: Vec<f64>,
+    problems: Vec<Problem>,
     timer_handle: Option<StreamHandle>,
 }
 
@@ -127,6 +134,12 @@ pub struct Message {
     name: String,
     author: String,
     points: u8,
+    problems: Vec<Problem>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Problem {
+    letter: String,
 }
 
 // Message from the server to the client.
@@ -147,7 +160,7 @@ pub struct PayloadData {
     books: DataBook,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DataBook{
     mutation_type: String,
     id: String,
@@ -185,7 +198,15 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         // Interval
         //
         Msg::OnTick => {
-            if model.seconds != 600000 { model.seconds += 1000;
+            if model.seconds != 600000 {
+                model.seconds += 1000;
+                if model.graph.len() < 100 {
+                    model.graph.push(1.0)
+                } else {
+                    // Remove the first duplicate value
+                    model.graph.remove(0);
+                    model.graph.push(1.0);
+                }
             }
         }
         //
@@ -202,8 +223,17 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                         name: data.books[book_index].name.to_string(),
                         author: data.books[book_index].author.to_string(),
                         points: data.books[book_index].points.to_string().parse().unwrap(),
+                        problems: vec![
+                            Problem{ letter:"A".to_string() },
+                            Problem{ letter:"B".to_string() },
+                        ],
                     }
-                )
+                );
+                // if model.problems.iter().any(|i| i.letter != "A") {
+                model.problems.push(
+                    Problem{ letter:"A".to_string() },
+                );
+                // }
             }
         }
         Msg::BookCreated(Ok(GQLResponse {
@@ -243,6 +273,10 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     name: name.clone(),
                     author: author.clone(),
                     points: points.clone().parse().unwrap(),
+                    problems: vec![
+                        Problem{ letter:"A".to_string() },
+                        Problem{ letter:"B".to_string() },
+                    ],
                 }
             }
             orders.perform_cmd(async {
@@ -332,10 +366,14 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 let name = book["name"].to_string().replace("\"", "");
                 let author = book["author"].to_string().replace("\"", "");
                 let points = book["points"].to_string().replace("\"", "").parse().unwrap();
+                let problems =  vec![
+                        Problem{ letter:"A".to_string() },
+                        Problem{ letter:"B".to_string() },
+                    ];
                 match mutation_type.as_str() {
                     "CREATED" => {
                         model.messages
-                            .push(Message { id, name, author, points });
+                            .push(Message { id, name, author, points, problems });
                     }
                     "UPDATED" => {
                         if let Some(index) = model.messages.iter().position(|message| message.id.to_string() == id) {
@@ -344,6 +382,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                                 name: name.clone(),
                                 author: author.clone(),
                                 points: points.clone(),
+                                problems: problems.clone(),
                             }
                         }
                     }
@@ -539,6 +578,18 @@ fn view(model: &Model) -> Node<Msg> {
                     ]
                 ],
             ],
+            div![
+                // The class required by GitHub styles. See `index.html`.
+                C!["markdown-body"],
+                style![
+                    St::Color => "#9580ff",
+                ],
+                md!( plot(
+                        model.graph.clone(),
+                        Config::default().with_offset(10).with_height(10)
+                    ).as_str()
+                ),
+            ],
             //
             // Scoring
             //
@@ -554,12 +605,18 @@ fn view(model: &Model) -> Node<Msg> {
                             th![ C!["text-center"], attrs! { At::Scope => "col", }, "Name" ],
                             th![ C!["text-center"], attrs! { At::Scope => "col", }, "Author" ],
                             th![ C!["text-center"], attrs! { At::Scope => "col", }, "Points" ],
-                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["A"],br![],span!["100"] ],
-                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["B"],br![],span!["200"] ],
-                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["C"],br![],span!["300"] ],
-                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["D"],br![],span!["400"] ],
-                            th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["E"],br![],span!["500"] ],
+                            model.problems.iter().map(| problem |
+                                {
+                                    th![ C!["text-center"], attrs! { At::Scope => "col", }, a![&problem.letter],br![],span!["100"] ]
+                                }
+                            ),
                             th![ C!["text-center"], attrs! { At::Scope => "col", }, "Actions" ],
+                            
+                            // th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["A"],br![],span!["100"] ],
+                            // th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["B"],br![],span!["200"] ],
+                            // th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["C"],br![],span!["300"] ],
+                            // th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["D"],br![],span!["400"] ],
+                            // th![ C!["text-center"], attrs! { At::Scope => "col", }, a!["E"],br![],span!["500"] ],
                         ]
                     ],
                     tbody![
